@@ -115,6 +115,17 @@
   .g-card button{margin-top:18px;width:100%;padding:11px;background:var(--accent);
     color:#FFF;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
 
+  /* ===== 视频结果弹层：生成后原地预览 ===== */
+  #videoModal{position:fixed;inset:0;z-index:130;background:rgba(20,18,14,.72);
+    display:none;align-items:center;justify-content:center;padding:20px}
+  .vm-card{background:#1E1C18;border-radius:14px;max-width:360px;width:100%;padding:14px;
+    box-shadow:0 16px 50px rgba(0,0,0,.5)}
+  .vm-card video{width:100%;border-radius:8px;display:block;background:#000;max-height:62vh}
+  .vm-tools{display:flex;gap:8px;margin-top:12px}
+  .vm-tools button{flex:1;padding:10px 4px;border-radius:8px;border:1px solid #4A463E;
+    background:transparent;color:#EDE8DC;font-size:13px;font-family:inherit;cursor:pointer}
+  .vm-tools .vm-primary{background:var(--accent);border-color:var(--accent);color:#FFF}
+
   /* ===== 奶白主题（韩系清爽向）：变量覆盖 + 面板/背景 ===== */
   body.theme-bright{--paper:#FFFFFF;--ink:#3A3835;--accent:#5B8DEF;--hair:#D9D6D0;
     background:#F4F3F1}
@@ -732,6 +743,18 @@
 
 <button id="opCancel">取消当前操作</button>
 <div id="toast"></div>
+
+<!-- 视频结果弹层 -->
+<div id="videoModal">
+  <div class="vm-card">
+    <video id="videoView" controls playsinline loop muted autoplay></video>
+    <div class="vm-tools">
+      <button id="vmShare" class="vm-primary">分享 / 保存</button>
+      <button id="vmDl">下载</button>
+      <button id="vmClose">关闭</button>
+    </div>
+  </div>
+</div>
 
 <!-- 新手引导卡：只出现一次 -->
 <div id="guide">
@@ -2680,17 +2703,42 @@
       });
       rec.stop(); await stopped;
       const blob = new Blob(chunks, { type: mime.split(';')[0] });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = '视频杂志_VOL01.' + (mime.includes('mp4') ? 'mp4' : 'webm');
-      a.click();
-      showToast('视频已生成（' + DUR/1000 + ' 秒 · 1080×1920）');
+      window.__videoBlob = blob;
+      window.__videoExt = mime.includes('mp4') ? 'mp4' : 'webm';
+      const vv = $('videoView');
+      if(window.__videoURL) URL.revokeObjectURL(window.__videoURL);
+      window.__videoURL = URL.createObjectURL(blob);
+      vv.src = window.__videoURL;
+      $('videoModal').style.display = 'flex';
+      vv.play().catch(() => {});   // 部分浏览器需用户手势，controls 保底
     }catch(err){
       showToast('视频导出失败：' + err.message);
     }
     pageWrap.style.transform = prevWrap; page.style.transform = prevT; page.style.zoom = prevZ;
     page.classList.remove('exporting');
     btn.textContent = '导出视频（3s）'; btn.disabled = false;
+  });
+
+  /* 视频结果弹层：分享（系统级，可存相册）/ 下载 / 关闭 */
+  $('vmShare').addEventListener('click', async () => {
+    const file = new File([window.__videoBlob], '视频杂志_VOL01.' + window.__videoExt,
+      { type: window.__videoBlob.type });
+    if(navigator.canShare && navigator.canShare({ files: [file] })){
+      try{ await navigator.share({ files: [file], title: '视频杂志' }); }catch(e){}
+    }else{
+      $('vmDl').click();   // 不支持系统分享（多为桌面端）：退化为下载
+      showToast('此浏览器不支持直接分享，已为你下载');
+    }
+  });
+  $('vmDl').addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.href = window.__videoURL;
+    a.download = '视频杂志_VOL01.' + window.__videoExt;
+    a.click();
+  });
+  $('vmClose').addEventListener('click', () => {
+    $('videoView').pause();
+    $('videoModal').style.display = 'none';
   });
 
   /* ---- 导出 ---- */
