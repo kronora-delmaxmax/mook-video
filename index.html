@@ -1055,7 +1055,8 @@
 
   /* ---- 相框内照片手势：拖动调构图，双指缩放 ---- */
   function attachPhotoGestures(ph){
-    const img = ph.querySelector('video') || ph.querySelector('img');   // 视频相框：手势作用在 video 上
+    // 媒体元素动态解析：视频是后放入的，初始化时还不存在
+    const mediaEl = () => ph.querySelector('video') || ph.querySelector('img');
     ph._pz = 1; ph._px = 0; ph._py = 0;
     const frameSize = () => {
       const r = ph.getBoundingClientRect(), ps = page._scale || 1;
@@ -1101,9 +1102,10 @@
         moved = true;
       }
       clampPan();
-      img.style.transformOrigin = 'center';
-      img.style.transform = 'translate(' + ph._px + 'px,' + ph._py + 'px) scale(' + ph._pz + ')';
-      img.style.maxWidth = 'none';
+      const m = mediaEl();
+      m.style.transformOrigin = 'center';
+      m.style.transform = 'translate(' + ph._px + 'px,' + ph._py + 'px) scale(' + ph._pz + ')';
+      m.style.maxWidth = 'none';
     });
     const up = e => {
       if(moved) ph._suppressClick = true;   // 抑制随后的 click 换图
