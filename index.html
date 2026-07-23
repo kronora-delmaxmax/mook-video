@@ -1049,7 +1049,7 @@
 
   /* ---- 相框内照片手势：拖动调构图，双指缩放 ---- */
   function attachPhotoGestures(ph){
-    const img = ph.querySelector('img');
+    const img = ph.querySelector('video') || ph.querySelector('img');   // 视频相框：手势作用在 video 上
     ph._pz = 1; ph._px = 0; ph._py = 0;
     const frameSize = () => {
       const r = ph.getBoundingClientRect(), ps = page._scale || 1;
