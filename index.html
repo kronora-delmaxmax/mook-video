@@ -1040,6 +1040,7 @@
   }
   /* 全出血完整显示：构图未被用户调整过的照片自动转 contain */
   function bleedFitWhole(p){
+    if(p._isVideo) return;   // 视频保持铺满，不自动转完整显示
     const img = p.querySelector('img');
     const go = () => { if(p._pz === 1 && !p._px && !p._py) layoutPhoto(p, 'contain'); };
     if(img.complete && img.naturalWidth) go();
@@ -1195,7 +1196,7 @@
     v.src = URL.createObjectURL(f);
     p.classList.add('filled');
     v.addEventListener('loadedmetadata', () => {
-      layoutPhoto(p, p.closest('.layE') ? 'contain' : 'cover');
+      layoutPhoto(p, 'cover');   // 视频默认铺满：全屏不留黑边；双击可切回按比例完整显示
       v.play().catch(() => {});
     }, { once: true });
     showToast('视频相框已放入：录制导出时会一起动');
