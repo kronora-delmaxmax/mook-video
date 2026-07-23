@@ -409,6 +409,8 @@
   .exporting .ph-tools{display:none!important}
   /* 空相框的占位 img 无图源，导出时隐藏避免 html2canvas 报 Error loading image */
   .exporting .photo:not(.filled) img{display:none!important}
+  /* PNG 导出画不了视频帧：隐藏 video 元素（视频请用"导出视频"） */
+  .exporting .photo video{display:none!important}
   /* 栏位提示态：未填写时显示灰色栏位名，编辑或 AI 生成后恢复正文色 */
   [contenteditable].hint{color:#BDB5A2!important}
   .layE [contenteditable].hint{color:rgba(255,255,255,.55)!important}
@@ -739,7 +741,7 @@
   </div>
 </main>
 
-<input type="file" id="fileIn" accept="image/*" style="display:none">
+<input type="file" id="fileIn" accept="image/*,video/*" style="display:none">
 
 <button id="opCancel">取消当前操作</button>
 <div id="toast"></div>
@@ -996,8 +998,8 @@
        'contain' 整图完整显示（全出血默认，零裁切）
      手势的 translate/scale 在此盒子上叠加 */
   function layoutPhoto(p, mode){
-    const img = p.querySelector('img');
-    const nw = img.naturalWidth, nh = img.naturalHeight;
+    const img = p.querySelector('video') || p.querySelector('img');
+    const nw = img.videoWidth || img.naturalWidth, nh = img.videoHeight || img.naturalHeight;
     if(!nw || !nh) return;
     const rc = p.getBoundingClientRect(), ps = page._scale || 1;
     const W = rc.width / ps, H = rc.height / ps;
@@ -1129,6 +1131,7 @@
     tools.addEventListener('click', async e => {
       const b = e.target.closest('button'); if(!b) return;
       e.stopPropagation();
+      if(p._isVideo){ showToast('视频相框暂不支持旋转/翻转'); return; }
       const img = p.querySelector('img');
       if(!p.classList.contains('filled') || !img.src) return;
       pushUndo();
@@ -1167,6 +1170,27 @@
     }
     if(!activeSlot) return;
     pushUndo();
+    // 视频文件：装入 <video>（Live Photo 请先在相册"存储为视频"再选）
+    if(f.type.startsWith('video/')){
+      const p = activeSlot;
+      let v = p.querySelector('video');
+      if(!v){
+        v = document.createElement('video');
+        v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
+        v.style.cssText = 'position:absolute;display:block';
+        p.appendChild(v);
+      }
+      p._isVideo = true;
+      v.src = URL.createObjectURL(f);
+      p.classList.add('filled');
+      v.addEventListener('loadedmetadata', () => {
+        layoutPhoto(p, p.closest('.layE') ? 'contain' : 'cover');
+        v.play().catch(() => {});
+      }, { once: true });
+      showToast('视频相框已放入：录制导出时会一起动');
+      fileIn.value = '';
+      return;
+    }
     const r = new FileReader();
     r.onload = e=>{
       const img = activeSlot.querySelector('img');
@@ -2395,7 +2419,7 @@
       folio: document.querySelector('.folio').textContent,
       collage: collageOn,
       photos: [...document.querySelectorAll('.photo')].map(p => {
-        if(!p.classList.contains('filled')) return null;
+        if(!p.classList.contains('filled') || p._isVideo) return null;   // 视频相框不入草稿
         return { src: shrinkForDraft(p.querySelector('img')), pz: p._pz||1, px: p._px||0, py: p._py||0,
                  tilt: (p._tilt != null ? p._tilt : null), round: p.classList.contains('round'),
                  fit: p._fit || 'cover', bw: p._bw || 0, bh: p._bh || 0 };
@@ -2656,7 +2680,7 @@
       const pageRc = page.getBoundingClientRect();
       const v = vOrder.find(x => page.classList.contains(x)) || 'vA';
       const shots = [...page.querySelectorAll(lays[v] + ' .photo.filled')].map(p => {
-        const img = p.querySelector('img'), rc = p.getBoundingClientRect();
+        const img = p.querySelector('video') || p.querySelector('img'), rc = p.getBoundingClientRect();
         return {
           img,
           fx: rc.left - pageRc.left, fy: rc.top - pageRc.top, fw: rc.width, fh: rc.height,
@@ -2667,7 +2691,7 @@
         };
       });
       const base = await html2canvas(page, { scale: SC, useCORS: true, backgroundColor: '#FAF7F0',
-        ignoreElements: el => el.tagName === 'IMG' && !!el.closest('.photo') });
+        ignoreElements: el => (el.tagName === 'IMG' || el.tagName === 'VIDEO') && !!el.closest('.photo') });
       btn.textContent = '录制中…';
       const cv = document.createElement('canvas');
       cv.width = 540 * SC; cv.height = pageH * SC;
