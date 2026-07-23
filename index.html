@@ -115,6 +115,16 @@
   .g-card button{margin-top:18px;width:100%;padding:11px;background:var(--accent);
     color:#FFF;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}
 
+  /* ===== 选照片/视频 弹层 ===== */
+  #pickModal{position:fixed;inset:0;z-index:125;background:rgba(20,18,14,.55);
+    display:none;align-items:flex-end;justify-content:center}
+  .pk-card{width:100%;max-width:420px;padding:14px 14px calc(14px + env(safe-area-inset-bottom));
+    background:#FFFDF8;border-radius:16px 16px 0 0;display:flex;flex-direction:column;gap:10px}
+  .pk-card button{padding:14px;border:1px solid var(--hair);border-radius:10px;
+    background:#FFF;font-size:15px;font-family:inherit;cursor:pointer;color:var(--ink)}
+  .pk-card .pk-v{background:var(--accent);border-color:var(--accent);color:#FFF}
+  .pk-card .pk-c{color:#8A8271;border:none;background:transparent}
+
   /* ===== 视频结果弹层：生成后原地预览 ===== */
   #videoModal{position:fixed;inset:0;z-index:130;background:rgba(20,18,14,.72);
     display:none;align-items:center;justify-content:center;padding:20px}
@@ -741,10 +751,20 @@
   </div>
 </main>
 
-<input type="file" id="fileIn" accept="image/*,video/*" style="display:none">
+<input type="file" id="fileIn" accept="image/*" style="display:none">
+<input type="file" id="fileInV" accept="video/*" style="display:none">
 
 <button id="opCancel">取消当前操作</button>
 <div id="toast"></div>
+
+<!-- 选照片 / 选视频 -->
+<div id="pickModal">
+  <div class="pk-card">
+    <button id="pkImg">选照片</button>
+    <button id="pkVid" class="pk-v">选视频（含 Live Photo 存出的视频）</button>
+    <button id="pkCancel" class="pk-c">取消</button>
+  </div>
+</div>
 
 <!-- 视频结果弹层 -->
 <div id="videoModal">
@@ -986,9 +1006,10 @@
     p.addEventListener('click', ()=>{
       if(p._suppressClick){ p._suppressClick = false; return; }  // 刚拖完不触发换图
       // 空相框：单击立即选图；已填充：延迟 280ms，期间第二击 = 双击切构图（手势层会取消本次单击）
-      if(!p.classList.contains('filled')){ activeSlot = p; fileIn.click(); return; }
+      if(!p.classList.contains('filled')){ activeSlot = p; $('pickModal').style.display = 'flex'; return; }
       if(p._clickTimer){ clearTimeout(p._clickTimer); p._clickTimer = null; return; }
-      p._clickTimer = setTimeout(() => { p._clickTimer = null; activeSlot = p; fileIn.click(); }, 280);
+      p._clickTimer = setTimeout(() => { p._clickTimer = null; activeSlot = p;
+        $('pickModal').style.display = 'flex'; }, 280);
     });
   });
 
@@ -1161,6 +1182,39 @@
     p.appendChild(tools);
   });
 
+  /* 视频装入相框（视频专用输入框与混选输入共用） */
+  function putVideo(p, f){
+    let v = p.querySelector('video');
+    if(!v){
+      v = document.createElement('video');
+      v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
+      v.style.cssText = 'position:absolute;display:block';
+      p.appendChild(v);
+    }
+    p._isVideo = true;
+    v.src = URL.createObjectURL(f);
+    p.classList.add('filled');
+    v.addEventListener('loadedmetadata', () => {
+      layoutPhoto(p, p.closest('.layE') ? 'contain' : 'cover');
+      v.play().catch(() => {});
+    }, { once: true });
+    showToast('视频相框已放入：录制导出时会一起动');
+  }
+  /* 选照片/视频 弹层（此处 $ 辅助函数尚未声明，用 getElementById） */
+  const pickModal = document.getElementById('pickModal');
+  document.getElementById('pkImg').addEventListener('click', () => { pickModal.style.display = 'none'; fileIn.click(); });
+  document.getElementById('pkVid').addEventListener('click', () => { pickModal.style.display = 'none'; document.getElementById('fileInV').click(); });
+  document.getElementById('pkCancel').addEventListener('click', () => { pickModal.style.display = 'none'; });
+  pickModal.addEventListener('click', e => { if(e.target === pickModal) pickModal.style.display = 'none'; });
+  document.getElementById('fileInV').addEventListener('change', () => {
+    const fv = document.getElementById('fileInV');
+    const f = fv.files[0];
+    fv.value = '';
+    if(!f || !activeSlot) return;
+    pushUndo();
+    putVideo(activeSlot, f);
+  });
+
   fileIn.addEventListener('change', ()=>{
     const f = fileIn.files[0]; if(!f) return;
     if(cutPickMode){
@@ -1170,27 +1224,7 @@
     }
     if(!activeSlot) return;
     pushUndo();
-    // 视频文件：装入 <video>（Live Photo 请先在相册"存储为视频"再选）
-    if(f.type.startsWith('video/')){
-      const p = activeSlot;
-      let v = p.querySelector('video');
-      if(!v){
-        v = document.createElement('video');
-        v.muted = true; v.loop = true; v.playsInline = true; v.autoplay = true;
-        v.style.cssText = 'position:absolute;display:block';
-        p.appendChild(v);
-      }
-      p._isVideo = true;
-      v.src = URL.createObjectURL(f);
-      p.classList.add('filled');
-      v.addEventListener('loadedmetadata', () => {
-        layoutPhoto(p, p.closest('.layE') ? 'contain' : 'cover');
-        v.play().catch(() => {});
-      }, { once: true });
-      showToast('视频相框已放入：录制导出时会一起动');
-      fileIn.value = '';
-      return;
-    }
+    if(f.type.startsWith('video/')){ putVideo(activeSlot, f); fileIn.value = ''; return; }
     const r = new FileReader();
     r.onload = e=>{
       const img = activeSlot.querySelector('img');
