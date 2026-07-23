@@ -306,7 +306,7 @@
   /* ===== 版式 D：贴纸图鉴版（白底自由摆） ===== */
   /* ===== 版式 E：全出血大图 ===== */
   .layE{position:absolute;inset:0}
-  .layE .photo{position:absolute;inset:0;width:100%;height:100%;background:#DDD5C4}
+  .layE .photo{position:absolute;inset:0;width:100%;height:100%;background:#000}
   .layE .bleed-scrim{
     position:absolute;left:0;right:0;bottom:0;height:46%;z-index:3;pointer-events:none;
     background:linear-gradient(rgba(20,16,10,0), rgba(20,16,10,.62));
@@ -517,7 +517,7 @@
     <label>版式 VARIANT</label>
     <div class="seg" id="segVariant">
       <button data-v="vA" class="on">单图版</button>
-      <button data-v="vE">全出血</button>
+      <button data-v="vE">全屏</button>
       <button data-v="vF">扉页版</button>
       <button data-v="vG">压图版</button>
       <button data-v="vH">错位版</button>
@@ -1499,7 +1499,7 @@
 
   /* 手机端底部主操作栏 */
   const vOrder = ['vA','vE','vF','vG','vH','vI'];
-  const vNames = { vA:'单图版', vE:'全出血', vF:'扉页版', vG:'压图版', vH:'错位版', vI:'框图版' };
+  const vNames = { vA:'单图版', vE:'全屏', vF:'扉页版', vG:'压图版', vH:'错位版', vI:'框图版' };
   $('mBar').addEventListener('click', e => {
     const b = e.target.closest('button'); if(!b) return;
     const act = b.dataset.act;
