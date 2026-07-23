@@ -1536,7 +1536,18 @@
   function chkOp(){ if(opFlag && opFlag.cancelled) throw new Error('用户取消了操作'); }
 
   /* 把当前版式第一张已填照片压缩为 dataURL（≤1024px，控制请求体积） */
-  function getMainImage(){
+  async function getMainImage(){
+    // 视频相框优先：抓当前帧作识别静帧（Live Photo 存出的视频同样吃这条）
+    const vid = page.querySelector('.photo.filled video');
+    if(vid && vid.videoWidth){
+      const cv = document.createElement('canvas');
+      cv.width = vid.videoWidth; cv.height = vid.videoHeight;
+      cv.getContext('2d').drawImage(vid, 0, 0);
+      const im = new Image();
+      im.src = cv.toDataURL('image/jpeg', .9);
+      try{ await im.decode(); }catch(e){}
+      return im;
+    }
     const imgs = page.querySelectorAll('.photo.filled img');
     for(const img of imgs){ if(img.src) return img; }
     return null;
@@ -1648,6 +1659,7 @@
       T.env.allowLocalModels = true;
       T.env.allowRemoteModels = false;
       T.env.useBrowserCache = true;
+      T.env.backends.onnx.wasm.wasmPaths = './vendor/';   // ORT 运行时走本地，不依赖 CDN（离线/内网可用）
       chkOp();
       await ensureChunkedFile('models/Xenova/resnet-50/onnx/model_quantized.onnx');
       captioner = await T.pipeline('image-classification', 'Xenova/resnet-50', { dtype:'q8' });
@@ -1857,7 +1869,7 @@
 
   /* ---- 真实 AI 调用（纯前端，无需后端） ---- */
   async function callAI(){
-    const imgEl = getMainImage();
+    const imgEl = await getMainImage();
     if(!imgEl){ setStatus('请先点击照片框放入至少一张照片','err'); return; }
     const btn = $('btnAI'); btn.disabled = true;
     opBegin();
@@ -1988,6 +2000,7 @@
     T.env.allowLocalModels = true;
     T.env.allowRemoteModels = false;
     T.env.useBrowserCache = true;
+    T.env.backends.onnx.wasm.wasmPaths = './vendor/';   // ORT 运行时走本地
     await ensureChunkedFile('models/briaai/RMBG-1.4/onnx/model_quantized.onnx');
     try{ rmbgModel = await T.AutoModel.from_pretrained('briaai/RMBG-1.4', { dtype:'q8' }); }
     catch(e){ rmbgModel = await T.AutoModel.from_pretrained('briaai/RMBG-1.4'); }
