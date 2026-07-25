@@ -2981,13 +2981,6 @@
       const base = await html2canvas(page, { scale: SC, useCORS: true,
         backgroundColor: getComputedStyle(page).backgroundColor,
         ignoreElements: el => (el.tagName === 'IMG' || el.tagName === 'VIDEO') && !!el.closest('.photo') });
-      // 文字层 = 同一渲染的副本挖掉已填充相框（透明洞给逐帧媒体，文字永远置顶）
-      const overlay = document.createElement('canvas');
-      overlay.width = base.width; overlay.height = base.height;
-      const octx = overlay.getContext('2d');
-      octx.drawImage(base, 0, 0);
-      octx.globalCompositeOperation = 'destination-out';
-      shots.forEach(s => octx.fillRect(s.fx*SC, s.fy*SC, s.fw*SC, s.fh*SC));
       btn.textContent = '录制中…';
       const cv = document.createElement('canvas');
       cv.width = 540 * SC; cv.height = pageH * SC;
@@ -3022,12 +3015,20 @@
             }
             ctx.restore();
           });
-          ctx.drawImage(overlay, 0, 0, cv.width, cv.height);   // 排版文字层永远在最上
+          // 文字层：同一块底层再画一次，但裁掉相框区域（奇偶规则挖洞）——比独立覆盖层省一整块大画布，防 iOS 内存崩溃
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, cv.width, cv.height);
+          shots.forEach(s => ctx.rect(s.fx*SC, s.fy*SC, s.fw*SC, s.fh*SC));
+          ctx.clip('evenodd');
+          ctx.drawImage(base, 0, 0, cv.width, cv.height);
+          ctx.restore();
           if(el < DUR + 120) requestAnimationFrame(frame); else res();
         };
         frame();
       });
       rec.stop(); await stopped;
+      base.width = 0; base.height = 0;   // 录制结束立即释放大画布，降低 iOS 内存峰值
       const blob = new Blob(chunks, { type: mime.split(';')[0] });
       window.__videoBlob = blob;
       window.__videoExt = mime.includes('mp4') ? 'mp4' : 'webm';
