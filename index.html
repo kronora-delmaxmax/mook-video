@@ -2952,7 +2952,11 @@
      相框里的 <img> 若是 GIF/WebP 动图，drawImage 取的是当前帧，录制时天然会动 */
   document.getElementById('btnVideo').addEventListener('click', async () => {
     const btn = document.getElementById('btnVideo');
-    const DUR = 3000, FPS = 30, SC = 2;   // 输出 1080×1920
+    // iOS GPU 内存/算力上限严格：自动降载（1.5 倍率/24fps/4Mbps），否则录制即闪退
+    const isiOS = /iP(hone|ad|od)/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const DUR = 3000, FPS = isiOS ? 24 : 30, SC = isiOS ? 1.5 : 2;
+    const VBR = isiOS ? 4000000 : 6000000;   // 输出 1080×1920
     btn.textContent = '准备中…'; btn.disabled = true;
     const prevT = page.style.transform, prevZ = page.style.zoom, prevWrap = pageWrap.style.transform;
     pageWrap.style.transform = 'none'; page.style.transform = 'none'; page.style.zoom = '100%';
@@ -2989,7 +2993,7 @@
       const mime = ['video/mp4;codecs=avc1', 'video/mp4', 'video/webm;codecs=vp9', 'video/webm']
         .find(m => { try{ return MediaRecorder.isTypeSupported(m); }catch(e){ return false; } });
       if(!mime) throw new Error('此浏览器不支持视频录制（MediaRecorder）');
-      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 6000000 });
+      const rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: VBR });
       const chunks = [];
       rec.ondataavailable = e => { if(e.data.size) chunks.push(e.data); };
       const stopped = new Promise(res => rec.onstop = res);
@@ -3029,6 +3033,7 @@
       });
       rec.stop(); await stopped;
       base.width = 0; base.height = 0;   // 录制结束立即释放大画布，降低 iOS 内存峰值
+      shots.forEach(s => { if(s.img && s.img.tagName === 'VIDEO') s.img.pause(); });   // 释放解码器
       const blob = new Blob(chunks, { type: mime.split(';')[0] });
       window.__videoBlob = blob;
       window.__videoExt = mime.includes('mp4') ? 'mp4' : 'webm';
