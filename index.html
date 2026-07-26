@@ -127,6 +127,21 @@
   .pk-card .pk-v{background:var(--accent);border-color:var(--accent);color:#FFF}
   .pk-card .pk-c{color:#8A8271;border:none;background:transparent}
 
+  /* ===== 视频截取弹层：放入视频时引导选 3 秒片段 ===== */
+  #trimModal{position:fixed;inset:0;z-index:128;background:rgba(20,18,14,.6);
+    display:none;align-items:flex-end;justify-content:center}
+  .tm-card{width:100%;max-width:420px;padding:16px 16px calc(16px + env(safe-area-inset-bottom));
+    background:#FFFDF8;border-radius:16px 16px 0 0}
+  .tm-card h3{font-size:16px;letter-spacing:1px;margin-bottom:10px}
+  .tm-card video{width:100%;max-height:38vh;border-radius:10px;background:#000;display:block}
+  .tm-card input[type=range]{width:100%;margin:12px 0 4px;accent-color:var(--accent)}
+  .tm-label{font-size:12px;color:#8A8271;text-align:center;margin-bottom:10px;letter-spacing:.5px}
+  .tm-tools{display:flex;flex-direction:column;gap:8px}
+  .tm-tools button{padding:13px;border-radius:10px;border:1px solid var(--hair);
+    background:#FFF;font-size:15px;font-family:inherit;cursor:pointer;color:var(--ink)}
+  .tm-tools .tm-ok{background:var(--accent);border-color:var(--accent);color:#FFF}
+  .tm-tools .tm-skip{border:none;background:transparent;color:#8A8271}
+
   /* ===== 视频结果弹层：生成后原地预览 ===== */
   #videoModal{position:fixed;inset:0;z-index:130;background:rgba(20,18,14,.72);
     display:none;align-items:center;justify-content:center;padding:20px}
@@ -946,6 +961,20 @@
   </div>
 </div>
 
+<!-- 视频截取弹层 -->
+  <div id="trimModal">
+    <div class="tm-card">
+      <h3>截取 3 秒片段</h3>
+      <video id="trimPrev" muted playsinline loop autoplay></video>
+      <input type="range" id="trimRange" min="0" value="0" step="0.1">
+      <div class="tm-label" id="trimLabel"></div>
+      <div class="tm-tools">
+        <button class="tm-ok" id="trimOk">使用此片段</button>
+        <button class="tm-skip" id="trimSkip">从头开始</button>
+      </div>
+    </div>
+  </div>
+
 <!-- 视频结果弹层 -->
 <div id="videoModal">
   <div class="vm-card">
@@ -1383,6 +1412,44 @@
   });
 
   /* 视频装入相框（视频专用输入框与混选输入共用） */
+  /* 截取 3 秒片段：预览 + 起点滑杆 + 片段内循环 */
+  function openTrim(p, v){
+    const modal = document.getElementById('trimModal'),
+          prev = document.getElementById('trimPrev'),
+          range = document.getElementById('trimRange'),
+          label = document.getElementById('trimLabel');
+    const dur = v.duration || 0;
+    const fmt = s => { s = Math.max(0, Math.round(s));
+      return Math.floor(s/60) + ':' + String(s%60).padStart(2, '0'); };
+    const upd = () => {
+      const st = parseFloat(range.value);
+      label.textContent = dur <= 3.2
+        ? '视频全长 ' + fmt(dur) + '：不足 3 秒，将整段循环'
+        : '片段 ' + fmt(st) + ' – ' + fmt(st + 3) + '（全长 ' + fmt(dur) + '）';
+    };
+    prev.src = v.src;
+    prev.addEventListener('loadedmetadata', () => prev.play().catch(() => {}), { once: true });
+    range.max = Math.max(0, dur - 3); range.value = 0;
+    range.disabled = dur <= 3.2;
+    range.oninput = () => { prev.currentTime = parseFloat(range.value); upd(); };
+    upd();
+    modal.style.display = 'flex';
+    const done = start => {
+      modal.style.display = 'none';
+      prev.pause(); prev.removeAttribute('src'); prev.load();
+      p._vStart = start;
+      v.currentTime = start;
+      if(v._trimGuard) v.removeEventListener('timeupdate', v._trimGuard);
+      if(start + 3 < dur){   // 短于 3 秒的视频用原生整段循环
+        v._trimGuard = () => { if(v.currentTime >= start + 3) v.currentTime = start; };
+        v.addEventListener('timeupdate', v._trimGuard);
+      }
+      v.play().catch(() => {});
+    };
+    document.getElementById('trimOk').onclick = () => done(parseFloat(range.value) || 0);
+    document.getElementById('trimSkip').onclick = () => done(0);
+    modal.onclick = e => { if(e.target === modal) done(parseFloat(range.value) || 0); };
+  }
   function putVideo(p, f){
     let v = p.querySelector('video');
     if(!v){
@@ -1397,6 +1464,7 @@
     v.addEventListener('loadedmetadata', () => {
       layoutPhoto(p, 'cover');   // 视频默认铺满：全屏不留黑边；双击可切回按比例完整显示
       v.play().catch(() => {});
+      openTrim(p, v);   // 引导用户截取 3 秒片段
     }, { once: true });
     showToast('视频相框已放入：录制导出时会一起动');
     setTimeout(() => showToast('提示：视频不存入草稿，刷新页面后需重新放入'), 2800);
@@ -2976,11 +3044,15 @@
           px: p._px || 0, py: p._py || 0, pz: p._pz || 1,
           stkW: parseFloat(p.style.getPropertyValue('--stkW')) || 0,
           stkC: p.style.getPropertyValue('--stkC') || '#FFFFFF',
+          vStart: p._vStart || 0,
         };
       });
       // 多视频同框：录制前确保每个视频都在播（iOS 不主动 play 会停在首帧）
-      await Promise.all(shots.map(s =>
-        (s.img && s.img.tagName === 'VIDEO') ? s.img.play().catch(() => {}) : null));
+      await Promise.all(shots.map(s => {
+        if(!s.img || s.img.tagName !== 'VIDEO') return null;
+        s.img.currentTime = s.vStart || 0;   // 从截取的片段起点开录
+        return s.img.play().catch(() => {});
+      }));
       // 一次渲染整页（媒体跳过）：底层与文字层同源，杜绝两次渲染的布局漂移
       const base = await html2canvas(page, { scale: SC, useCORS: true,
         backgroundColor: getComputedStyle(page).backgroundColor,
