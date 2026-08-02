@@ -52,6 +52,12 @@
   .swatches{display:flex;gap:6px}
   .sw{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent}
   .sw.on{border-color:var(--ink)}
+  /* 文字颜色色板（与描边色板 .sw 区分） */
+  .tsw{width:22px;height:22px;border-radius:50%;cursor:pointer;border:2px solid transparent;
+    flex-shrink:0;font-size:10px;line-height:20px;text-align:center;color:#8A8271;background:#FBF9F3}
+  .tsw.on{border-color:var(--ink)}
+  #inkCustom{width:30px;height:24px;padding:0;border:1px solid #C9C2B4;border-radius:4px;
+    background:#fff;cursor:pointer;flex-shrink:0}
   .field{margin-bottom:8px}
   .field input,.field select{
     width:100%;padding:7px 9px;font-size:12px;border:1px solid #C9C2B4;border-radius:3px;
@@ -544,8 +550,13 @@
   /* PNG 导出画不了视频帧：隐藏 video 元素（视频请用"导出视频"） */
   .expng .photo video{display:none!important}   /* 仅 PNG 导出隐藏视频；视频导出必须保持可见可解码 */
   /* 栏位提示态：未填写时显示灰色栏位名，编辑或 AI 生成后恢复正文色 */
-  [contenteditable].hint{color:#BDB5A2!important}
-  .layE [contenteditable].hint{color:rgba(255,255,255,.55)!important}
+  [contenteditable].hint{color:var(--c,#BDB5A2)!important}   /* --c:单栏文字色穿透提示态 */
+  .layE [contenteditable].hint{color:var(--c,rgba(255,255,255,.55))!important}
+  .page.ink-x [contenteditable].hint{color:var(--c,var(--ink))!important}   /* 全局文字色也盖提示态 */
+  .page.ink-x .layE [contenteditable].hint,
+  .page.ink-x .vG .over [contenteditable].hint,
+  .page.ink-x .layL [contenteditable].hint,
+  .page.ink-x .layM [contenteditable].hint{color:var(--c,rgba(255,255,255,.6))!important}   /* 暗底版式白字保护 */
   /* ===== 拼贴感：照片小倾角 + 美纹纸胶带 ===== */
   .photo.tilt{box-shadow:0 3px 10px rgba(60,50,30,.18)}
   .photo.tape::before,.photo.tape::after{
@@ -668,6 +679,23 @@
     <div class="seg" id="segTheme">
       <button data-t="" class="on">暖纸</button>
       <button data-t="theme-bright">奶白</button>
+    </div>
+  </div>
+
+  <div class="group">
+    <label>文字颜色 TEXT COLOR</label>
+    <div class="swatches" id="textSwatches" style="align-items:center">
+      <div class="tsw on" data-c="" title="跟随主题">自</div>
+      <div class="tsw" data-c="#2B2B2B" style="background:#2B2B2B"></div>
+      <div class="tsw" data-c="#FAF7F0" style="background:#FAF7F0;border:2px solid #ddd"></div>
+      <div class="tsw" data-c="#E85D3D" style="background:#E85D3D"></div>
+      <div class="tsw" data-c="#2E4A6B" style="background:#2E4A6B"></div>
+      <div class="tsw" data-c="#6B7F5E" style="background:#6B7F5E"></div>
+      <div class="tsw" data-c="#B08A3C" style="background:#B08A3C"></div>
+      <input type="color" id="inkCustom" value="#2B2B2B" title="自定义颜色">
+    </div>
+    <div style="font-size:10px;color:#8A8271;margin-top:6px;line-height:1.6">
+      先点一下某栏文字再选色 = 只改那栏；直接选色 = 改全部文字
     </div>
   </div>
 
@@ -1545,6 +1573,35 @@
     strokeColor = s.dataset.c;
     applyStroke();
   });
+
+  /* ---- 文字颜色：点选过文字栏=改该栏（内联色）；否则=改全部（--ink 覆盖）---- */
+  let lastEditable = null;
+  page.addEventListener('focusin', e => {
+    const t = e.target.closest && e.target.closest('[data-k]');
+    if(t) lastEditable = t;
+  });
+  function applyTextColor(c){
+    const target = (lastEditable && document.contains(lastEditable) && lastEditable.offsetParent)
+      ? lastEditable : null;   // 隐藏版式里的栏不当作目标
+    if(target){
+      target.style.color = c || '';   // 空串 = 恢复默认
+      if(c) target.style.setProperty('--c', c); else target.style.removeProperty('--c');
+      showToast(c ? '已改当前栏文字颜色' : '该栏已恢复主题色');
+    }else{
+      if(c) page.style.setProperty('--ink', c);
+      else page.style.removeProperty('--ink');
+      page.classList.toggle('ink-x', !!c);   // 全局色连提示态一起盖
+      showToast(c ? '已改全部文字颜色' : '文字已恢复主题色');
+    }
+    document.querySelectorAll('#textSwatches .tsw').forEach(x =>
+      x.classList.toggle('on', x.dataset.c === (c || '')));
+    saveDraft();
+  }
+  document.getElementById('textSwatches').addEventListener('click', e => {
+    const s = e.target.closest('.tsw'); if(!s) return;
+    applyTextColor(s.dataset.c);
+  });
+  document.getElementById('inkCustom').addEventListener('input', e => applyTextColor(e.target.value));
 
   /* ---- AI 配置 ---- */
   const PRESETS = {
@@ -2775,6 +2832,12 @@
       strokeW: strokeW.value, strokeColor,
       filter: { bri: fBri.value, con: fCon.value, sat: fSat.value, warm: fWarm.value },
       texts,
+      ink: page.style.getPropertyValue('--ink') || '',
+      textColors: (() => {
+        const m = {};
+        document.querySelectorAll('[data-k]').forEach(el => { if(el.style.color) m[el.dataset.k] = el.style.color; });
+        return m;
+      })(),
       mast: [...document.querySelectorAll('.masthead span')].map(s =>
         s.classList.contains('hint') ? null : s.textContent),
       folio: document.querySelector('.folio').textContent,
@@ -2837,6 +2900,14 @@
         fSat.value = d.filter.sat; fWarm.value = d.filter.warm;
       }
       Object.entries(d.texts || {}).forEach(([k,v]) => setText(k, v));
+      if(d.ink) page.style.setProperty('--ink', d.ink); else page.style.removeProperty('--ink');
+      page.classList.toggle('ink-x', !!d.ink);
+      Object.entries(d.textColors || {}).forEach(([k, c]) => {
+        const el = document.querySelector('[data-k="' + k + '"]');
+        if(el){ el.style.color = c; el.style.setProperty('--c', c); }
+      });
+      document.querySelectorAll('#textSwatches .tsw').forEach(x =>
+        x.classList.toggle('on', x.dataset.c === (d.ink || '')));
       const masts = document.querySelectorAll('.masthead span');
       (d.mast || []).forEach((t,i) => {
         if(masts[i] && t != null){ masts[i].textContent = t; masts[i].classList.remove('hint'); }
@@ -2945,6 +3016,9 @@
     document.querySelectorAll('.note').forEach(n => n.remove());
     document.querySelectorAll('.lead-label,.lead-dot').forEach(l => l.remove());
     leadSvg.innerHTML = '';
+    page.style.removeProperty('--ink');
+    page.classList.remove('ink-x');
+    lastEditable = null;
     stickerSeq = 0; leadSeq = 0;
     document.querySelectorAll('.photo').forEach(p => {
       p.classList.remove('filled', 'round', 'tilt', 'tape');
@@ -2956,6 +3030,8 @@
       p._bw = 0; p._bh = 0; p._fit = null;
     });
     document.querySelectorAll('[data-k]').forEach(el => {
+      el.style.color = '';   // 清文字颜色
+      el.style.removeProperty('--c');
       const d = initialTexts[el.dataset.k]; if(!d) return;
       el.textContent = d.t; el.classList.toggle('hint', d.hint);
     });
@@ -2999,7 +3075,7 @@
     $('guide').style.display = 'none';
   });
 
-  ['segVariant','segPaper','sizeSel','swatches','strokeW'].forEach(id => {
+  ['segVariant','segPaper','sizeSel','swatches','strokeW','textSwatches'].forEach(id => {
     const el = $(id); if(el) el.addEventListener('pointerdown', pushUndo, true);
   });
   [tScale, bScale, fBri, fCon, fSat, fWarm].forEach(el =>
